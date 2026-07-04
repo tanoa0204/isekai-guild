@@ -25,6 +25,7 @@ let state = {
     questsCompleted: 0
 };
 
+// ギルドランク定義（累計ポイントで決定）
 const RANKS = [
     { min: 0,   label: "F（荷物持ち）" },
     { min: 40,  label: "E（下働き）" },
@@ -66,6 +67,7 @@ playerNameInput.addEventListener('keydown', (e) => {
 });
 
 restartBtn.addEventListener('click', () => {
+    // 保存機能なし：単純にページをリロードして完全初期化
     location.reload();
 });
 
@@ -120,7 +122,7 @@ generateBtn.addEventListener('click', async () => {
             <p class="quest-reward"><strong>報酬:</strong> ${quest.reward}</p>
             <div class="quest-meta">
                 <span class="meta-hp">体力消費: ${hpCost}</span>
-                <span class="meta-value">価値: ${rewardValue}pt</span>
+                <span class="meta-value">価値: ？？？pt</span>
             </div>
             <button class="order-btn">受注する（血の契約）</button>
         `;
@@ -141,7 +143,7 @@ generateBtn.addEventListener('click', async () => {
 
 // ===== クエスト受注処理 =====
 function acceptQuest(card) {
-    if (state.hp <= 0) return;
+    if (state.hp <= 0) return; // ゲームオーバー後は無効
 
     const hpCost = Number(card.dataset.hpCost) || 10;
     const rewardValue = Number(card.dataset.rewardValue) || 5;
@@ -149,6 +151,29 @@ function acceptQuest(card) {
     state.hp -= hpCost;
     state.score += rewardValue;
     state.questsCompleted += 1;
+
+    // 受注した瞬間にポイントを公開する
+    const valueSpan = card.querySelector('.meta-value');
+    valueSpan.innerText = `獲得ポイント: ${rewardValue}pt`;
+    valueSpan.classList.add('revealed');
+
+    // ポイントの当たり外れに応じてコメントを出す
+    const ratio = rewardValue / hpCost;
+    let comment = '';
+    let commentClass = '';
+    if (ratio >= 1.2) {
+        comment = '大当たり！';
+        commentClass = 'result-great';
+    } else if (ratio <= 0.3) {
+        comment = 'ハズレ…';
+        commentClass = 'result-bad';
+    }
+    if (comment) {
+        const commentEl = document.createElement('span');
+        commentEl.className = `result-comment ${commentClass}`;
+        commentEl.innerText = comment;
+        valueSpan.appendChild(commentEl);
+    }
 
     card.classList.add('accepted');
     updateStatusBar();
@@ -161,12 +186,14 @@ function acceptQuest(card) {
 // ===== 逃げるギミック =====
 function initFleeButton(button) {
     button.addEventListener('mouseover', () => {
-        const randomX = Math.random() * 150 - 75;
-        const randomY = Math.random() * 100 - 50;
+        // カード内でのランダムな位置にボタンをぶっ飛ばす
+        const randomX = Math.random() * 150 - 75; // -75px 〜 75px
+        const randomY = Math.random() * 100 - 50;  // -50px 〜 50px
 
         button.style.transform = `translate(${randomX}px, ${randomY}px)`;
         button.style.transition = "transform 0.1s ease";
 
+        // 確率でボタンの文字がおかしくなる
         if (Math.random() > 0.7) {
             button.innerText = "嫌だ！！行きたくない！！";
         }
