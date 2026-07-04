@@ -8,9 +8,6 @@
 </head>
 <body>
 
-    <!-- HP低下時の画面演出（赤いビネット） -->
-    <div id="vignette-overlay"></div>
-
     <!-- 名前入力モーダル -->
     <div id="name-modal" class="modal-overlay">
         <div class="modal-box">
@@ -60,8 +57,8 @@
 
         <!-- ステータスバー -->
         <div class="status-bar">
-            <div class="status-item">
-                <span class="status-label">冒険者:</span>
+            <div class="status-item avatar-status">
+                <div id="avatar-container" class="avatar-container"></div>
                 <span id="player-name-display">-</span>
             </div>
             <div class="status-item hp-status">
@@ -86,7 +83,7 @@
                 <div class="sidebar-box">
                     <p class="powered-by">Powered by Groq API</p>
                     <h2>理不尽クエスト<br>生成器</h2>
-                    <button id="generate-btn">GENERATE UNREASONABLE QUEST</button>
+                    <button id="generate-btn">新しい依頼を探す</button>
                     <button id="gamble-btn" class="gamble-trigger-btn hidden">⚠️ 一発逆転クエストを探す</button>
                     <p class="sidebar-note">...冒険者よ、命を賭してクソ業務に挑め。<br>体力が尽きるまで、ランクを上げ続けろ。</p>
                     <p id="receptionist-comment" class="receptionist-comment">「今日はどんな依頼を受けますか？」</p>
@@ -97,7 +94,7 @@
                 <div class="board-title">QUEST BOARD</div>
                 <div id="quest-list" class="quest-list">
                     <p id="empty-board-message" class="empty-board-message">
-                        まだ依頼が貼られていません。「GENERATE」ボタンでクエストを発見しよう。
+                        まだ依頼が貼られていません。「新しい依頼を探す」ボタンでクエストを発見しよう。
                     </p>
                 </div>
             </main>
