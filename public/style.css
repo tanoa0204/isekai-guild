@@ -260,3 +260,10 @@ body {
     border: 3px solid #c62828;
     padding: 5px 15px;
 }
+.empty-board-message {
+    text-align: center;
+    color: #8d6e63;
+    font-style: italic;
+    padding: 40px 20px;
+    grid-column: 1 / -1;
+}
