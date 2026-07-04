@@ -1,5 +1,6 @@
 const generateBtn = document.getElementById('generate-btn');
 const questList = document.getElementById('quest-list');
+const emptyBoardMessage = document.getElementById('empty-board-message');
 
 const nameModal = document.getElementById('name-modal');
 const playerNameInput = document.getElementById('player-name-input');
@@ -24,7 +25,6 @@ let state = {
     questsCompleted: 0
 };
 
-// ギルドランク定義（累計ポイントで決定）
 const RANKS = [
     { min: 0,   label: "F（荷物持ち）" },
     { min: 40,  label: "E（下働き）" },
@@ -43,6 +43,15 @@ function getRankLabel(score) {
     return current;
 }
 
+// 危険度(difficulty)に応じたタグ表示
+function getDifficultyTag(difficulty) {
+    if (difficulty >= 9) return "【自殺行為】";
+    if (difficulty >= 7) return "【超高難度】";
+    if (difficulty >= 5) return "【高難度】";
+    if (difficulty >= 3) return "【緊急】";
+    return "【お使い】";
+}
+
 // ===== 名前入力 =====
 startGameBtn.addEventListener('click', () => {
     const name = playerNameInput.value.trim();
@@ -57,7 +66,6 @@ playerNameInput.addEventListener('keydown', (e) => {
 });
 
 restartBtn.addEventListener('click', () => {
-    // 保存機能なし：単純にページをリロードして完全初期化
     location.reload();
 });
 
@@ -92,15 +100,21 @@ generateBtn.addEventListener('click', async () => {
             return;
         }
 
+        // 最初のクエストが出たら「掲示板が空です」メッセージを消す
+        if (emptyBoardMessage) {
+            emptyBoardMessage.remove();
+        }
+
         const hpCost = Number(quest.hpCost) || 10;
         const rewardValue = Number(quest.rewardValue) || 5;
+        const difficulty = Number(quest.difficulty) || 5;
 
         const card = document.createElement('div');
         card.className = 'quest-card';
         card.dataset.hpCost = hpCost;
         card.dataset.rewardValue = rewardValue;
         card.innerHTML = `
-            <div class="quest-tag">【緊急】</div>
+            <div class="quest-tag">${getDifficultyTag(difficulty)}</div>
             <h3 class="quest-title">${quest.title}</h3>
             <p class="quest-details"><strong>詳細:</strong> ${quest.details}</p>
             <p class="quest-reward"><strong>報酬:</strong> ${quest.reward}</p>
@@ -127,7 +141,7 @@ generateBtn.addEventListener('click', async () => {
 
 // ===== クエスト受注処理 =====
 function acceptQuest(card) {
-    if (state.hp <= 0) return; // ゲームオーバー後は無効
+    if (state.hp <= 0) return;
 
     const hpCost = Number(card.dataset.hpCost) || 10;
     const rewardValue = Number(card.dataset.rewardValue) || 5;
@@ -144,7 +158,7 @@ function acceptQuest(card) {
     }
 }
 
-// ===== 逃げるギミック（既存） =====
+// ===== 逃げるギミック =====
 function initFleeButton(button) {
     button.addEventListener('mouseover', () => {
         const randomX = Math.random() * 150 - 75;
@@ -158,13 +172,6 @@ function initFleeButton(button) {
         }
     });
 }
-
-// 最初からあるカードにもギミック＋受注処理を適用
-document.querySelectorAll('.quest-card').forEach(card => {
-    const btn = card.querySelector('.order-btn');
-    initFleeButton(btn);
-    btn.addEventListener('click', () => acceptQuest(card));
-});
 
 // ===== ゲームオーバー処理 =====
 function triggerGameOver() {
