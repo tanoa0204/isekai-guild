@@ -319,7 +319,7 @@ function buildQuestCard(quest) {
     }
 
     const orderBtn = card.querySelector('.order-btn');
-    initFleeButton(orderBtn);
+   
     orderBtn.addEventListener('click', () => acceptQuest(card, quest));
 
     return card;
@@ -470,20 +470,7 @@ gambleAcceptBtn.addEventListener('click', () => {
     currentGambleQuest = null;
 });
 
-// ===== 逃げるギミック =====
-function initFleeButton(button) {
-    button.addEventListener('mouseover', () => {
-        const randomX = Math.random() * 150 - 75;
-        const randomY = Math.random() * 100 - 50;
 
-        button.style.transform = `translate(${randomX}px, ${randomY}px)`;
-        button.style.transition = "transform 0.1s ease";
-
-        if (Math.random() > 0.7) {
-            button.innerText = "嫌だ！！行きたくない！！";
-        }
-    });
-}
 
 // ===== 称号システム =====
 function getAchievementTitle() {
