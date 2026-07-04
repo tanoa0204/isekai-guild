@@ -13,8 +13,7 @@ const hpText = document.getElementById('hp-text');
 const rankDisplay = document.getElementById('rank-display');
 const comboDisplay = document.getElementById('combo-display');
 const receptionistComment = document.getElementById('receptionist-comment');
-const vignetteOverlay = document.getElementById('vignette-overlay');
-const guildContainer = document.querySelector('.guild-container');
+const avatarContainer = document.getElementById('avatar-container');
 
 const gambleModal = document.getElementById('gamble-modal');
 const gambleTitle = document.getElementById('gamble-title');
@@ -35,8 +34,8 @@ const restartBtn = document.getElementById('restart-btn');
 
 // ===== ゲーム状態（保存なし・リロードで完全初期化） =====
 const MAX_HP = 100;
-const GAMBLE_HP_THRESHOLD = 25; // このHP%以下でギャンブルボタン出現
-const REFERENCE_SCORE = 200;    // 「歴代平均」演出用の固定値
+const GAMBLE_HP_THRESHOLD = 25;
+const REFERENCE_SCORE = 200;
 
 let state = {
     name: "",
@@ -46,7 +45,7 @@ let state = {
     combo: 0,
     maxCombo: 0,
     lastAcceptedTitle: "",
-    history: [],          // { title, category, type, hpCost, rewardValue, ratio }
+    history: [],
     gambleWon: false,
     gambleLost: false
 };
@@ -75,6 +74,65 @@ function getDifficultyTag(difficulty) {
     if (difficulty >= 5) return "【高難度】";
     if (difficulty >= 3) return "【緊急】";
     return "【お使い】";
+}
+
+// ===== アバター（HPに応じて表情が変わるSVG） =====
+// 4段階：元気 → 疲れ → 憔悴 → 瀕死
+function getAvatarState(hpPercent) {
+    if (hpPercent > 70) return 'genki';
+    if (hpPercent > 40) return 'tired';
+    if (hpPercent > 15) return 'exhausted';
+    return 'critical';
+}
+
+const AVATAR_SVGS = {
+    genki: `
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="46" fill="#ffcc80"/>
+            <circle cx="35" cy="45" r="5" fill="#3e2723"/>
+            <circle cx="65" cy="45" r="5" fill="#3e2723"/>
+            <path d="M32 65 Q50 82 68 65" stroke="#3e2723" stroke-width="4" fill="none" stroke-linecap="round"/>
+        </svg>
+    `,
+    tired: `
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="46" fill="#ffcc80"/>
+            <path d="M28 45 Q35 40 42 45" stroke="#3e2723" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path d="M58 45 Q65 40 72 45" stroke="#3e2723" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <ellipse cx="30" cy="58" rx="6" ry="4" fill="#ffab91" opacity="0.6"/>
+            <ellipse cx="70" cy="58" rx="6" ry="4" fill="#ffab91" opacity="0.6"/>
+            <path d="M35 68 Q50 74 65 68" stroke="#3e2723" stroke-width="4" fill="none" stroke-linecap="round"/>
+        </svg>
+    `,
+    exhausted: `
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="46" fill="#e0b088"/>
+            <path d="M28 48 L42 44" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+            <path d="M58 44 L72 48" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+            <ellipse cx="30" cy="60" rx="7" ry="5" fill="#8d6e63" opacity="0.5"/>
+            <ellipse cx="70" cy="60" rx="7" ry="5" fill="#8d6e63" opacity="0.5"/>
+            <path d="M36 72 Q50 66 64 72" stroke="#3e2723" stroke-width="4" fill="none" stroke-linecap="round"/>
+        </svg>
+    `,
+    critical: `
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="46" fill="#c9a087"/>
+            <path d="M30 42 L44 50 M44 42 L30 50" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+            <path d="M56 42 L70 50 M70 42 L56 50" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+            <ellipse cx="30" cy="62" rx="8" ry="6" fill="#6d4c41" opacity="0.6"/>
+            <ellipse cx="70" cy="62" rx="8" ry="6" fill="#6d4c41" opacity="0.6"/>
+            <path d="M38 76 Q50 70 62 76" stroke="#3e2723" stroke-width="4" fill="none" stroke-linecap="round"/>
+        </svg>
+    `
+};
+
+let currentAvatarState = null;
+function updateAvatar(hpPercent) {
+    const newState = getAvatarState(hpPercent);
+    if (newState !== currentAvatarState) {
+        avatarContainer.innerHTML = AVATAR_SVGS[newState];
+        currentAvatarState = newState;
+    }
 }
 
 // ===== サウンド（Web Audio APIで生成、外部ファイル不要） =====
@@ -180,17 +238,6 @@ function updateStatusBar() {
     rankDisplay.innerText = getRankLabel(state.score);
     comboDisplay.innerText = state.combo;
 
-    // 画面演出：HPが減るほど赤いビネットが濃くなる
-    const vignetteOpacity = Math.max(0, (70 - hpPercent) / 70) * 0.6;
-    vignetteOverlay.style.opacity = vignetteOpacity.toFixed(2);
-
-    // HPが危険域なら画面を揺らす
-    if (hpPercent > 0 && hpPercent <= 20) {
-        guildContainer.classList.add('critical-shake');
-    } else {
-        guildContainer.classList.remove('critical-shake');
-    }
-
     // 一発逆転クエストボタンの表示切替
     if (hpPercent > 0 && hpPercent <= GAMBLE_HP_THRESHOLD) {
         gambleBtn.classList.remove('hidden');
@@ -198,6 +245,7 @@ function updateStatusBar() {
         gambleBtn.classList.add('hidden');
     }
 
+    updateAvatar(hpPercent);
     updateReceptionistComment();
 }
 
@@ -230,7 +278,7 @@ generateBtn.addEventListener('click', async () => {
     } catch (error) {
         alert("通信エラー：ギルドの伝書鳩が撃ち落とされました。");
     } finally {
-        generateBtn.innerText = "GENERATE UNREASONABLE QUEST";
+        generateBtn.innerText = "新しい依頼を探す";
         generateBtn.disabled = false;
     }
 });
@@ -302,7 +350,6 @@ function acceptQuest(card, quest) {
     const baseReward = Number(card.dataset.rewardValue) || 5;
     const ratio = baseReward / hpCost;
 
-    // コンボボーナス：連続受注でスコア倍率アップ（最大+50%）
     const comboMultiplier = 1 + Math.min(state.combo, 10) * 0.05;
     const finalReward = Math.round(baseReward * comboMultiplier);
 
@@ -311,7 +358,6 @@ function acceptQuest(card, quest) {
     state.questsCompleted += 1;
     state.lastAcceptedTitle = quest.title;
 
-    // ハズレを引くとコンボが切れる、それ以外は伸びる
     if (ratio <= 0.3) {
         state.combo = 0;
     } else {
@@ -328,7 +374,6 @@ function acceptQuest(card, quest) {
         ratio
     });
 
-    // 受注した瞬間にポイントを公開
     const valueSpan = card.querySelector('.meta-value');
     let revealText = `獲得ポイント: ${finalReward}pt`;
     if (comboMultiplier > 1) {
@@ -402,7 +447,7 @@ gambleAcceptBtn.addEventListener('click', () => {
     if (won) {
         state.gambleWon = true;
         state.score += currentGambleQuest.gambleReward;
-        state.hp = Math.max(state.hp, 10); // 九死に一生
+        state.hp = Math.max(state.hp, 10);
         state.history.push({
             title: currentGambleQuest.title,
             category: '賭け',
