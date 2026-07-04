@@ -1,0 +1,128 @@
+body {
+    background-color: #1a1510;
+    color: #3e2723;
+    font-family: 'Georgia', 'Times New Roman', 'Shippori Mincho', serif;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.guild-container {
+    width: 100%;
+    max-width: 1200px;
+    background-color: #2b1f1d;
+    padding: 20px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    border: 4px double #8d6e63;
+}
+
+.guild-header h1 {
+    color: #d7ccc8;
+    text-align: center;
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    border-bottom: 2px solid #8d6e63;
+    padding-bottom: 10px;
+}
+
+.guild-content {
+    display: flex;
+    gap: 20px;
+}
+
+/* サイドバー */
+.guild-sidebar {
+    flex: 1;
+    background-color: #3e2723;
+    padding: 20px;
+    border: 2px solid #5d4037;
+    color: #d7ccc8;
+    text-align: center;
+}
+
+.powered-by {
+    font-size: 0.8rem;
+    color: #b0bec5;
+}
+
+#generate-btn {
+    background-color: #d84315;
+    color: white;
+    border: none;
+    padding: 15px 10px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 20px;
+    width: 100%;
+    transition: background 0.3s;
+}
+
+#generate-btn:hover {
+    background-color: #ff5722;
+}
+
+.sidebar-note {
+    font-size: 0.8rem;
+    margin-top: 20px;
+    font-style: italic;
+    color: #b0bec5;
+}
+
+/* 掲示板エリア */
+.guild-board {
+    flex: 3;
+    background-color: #efebe9;
+    padding: 20px;
+    border: 2px solid #d7ccc8;
+    min-height: 500px;
+}
+
+.board-title {
+    font-size: 1.8rem;
+    text-align: center;
+    font-weight: bold;
+    border-bottom: 2px dashed #8d6e63;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.quest-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+/* クエストカード（羊皮紙風） */
+.quest-card {
+    background-color: #f5f5dc;
+    padding: 20px;
+    border: 1px solid #d7ccc8;
+    box-shadow: 3px 3px 10px rgba(0,0,0,0.1);
+    position: relative; /* 逃げるギミック用 */
+    transition: all 0.1s ease;
+}
+
+.quest-tag {
+    color: #e64a19;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.quest-title {
+    margin-top: 5px;
+    font-size: 1.2rem;
+    border-bottom: 1px solid #bcaaa4;
+    padding-bottom: 5px;
+}
+
+.order-btn {
+    background-color: #4e342e;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 15px;
+}
