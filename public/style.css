@@ -267,3 +267,24 @@ body {
     padding: 40px 20px;
     grid-column: 1 / -1;
 }
+.meta-value.revealed {
+    color: #2e7d32;
+    font-weight: bold;
+}
+
+.result-comment {
+    margin-left: 8px;
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.result-great {
+    background-color: #c8e6c9;
+    color: #2e7d32;
+}
+
+.result-bad {
+    background-color: #ffcdd2;
+    color: #c62828;
+}
