@@ -1,5 +1,7 @@
+// ===== DOM参照 =====
 const generateBtn = document.getElementById('generate-btn');
 const gambleBtn = document.getElementById('gamble-btn');
+const codexBtn = document.getElementById('codex-btn');
 const questList = document.getElementById('quest-list');
 const emptyBoardMessage = document.getElementById('empty-board-message');
 
@@ -22,6 +24,18 @@ const gambleRewardHint = document.getElementById('gamble-reward-hint');
 const gambleAcceptBtn = document.getElementById('gamble-accept-btn');
 const gambleCancelBtn = document.getElementById('gamble-cancel-btn');
 
+const codexModal = document.getElementById('codex-modal');
+const codexCloseBtn = document.getElementById('codex-close-btn');
+const codexStoryList = document.getElementById('codex-story-list');
+
+const storyContinueModal = document.getElementById('story-continue-modal');
+const storyContinueArcTitle = document.getElementById('story-continue-arc-title');
+const storyContinueChapterTitle = document.getElementById('story-continue-chapter-title');
+const storyContinueDetails = document.getElementById('story-continue-details');
+const storyContinueHp = document.getElementById('story-continue-hp');
+const storyContinueAcceptBtn = document.getElementById('story-continue-accept-btn');
+const storyContinueCancelBtn = document.getElementById('story-continue-cancel-btn');
+
 const gameoverModal = document.getElementById('gameover-modal');
 const gameoverTitle = document.getElementById('gameover-title');
 const gameoverMessage = document.getElementById('gameover-message');
@@ -31,6 +45,34 @@ const bestQuestDisplay = document.getElementById('best-quest-display');
 const worstQuestDisplay = document.getElementById('worst-quest-display');
 const rankingComparisonDisplay = document.getElementById('ranking-comparison-display');
 const restartBtn = document.getElementById('restart-btn');
+
+// ===== 図鑑（localStorageで永続化） =====
+const CODEX_STORAGE_KEY = 'isekaiGuildCodex_v1';
+
+function loadCodex() {
+    try {
+        const raw = localStorage.getItem(CODEX_STORAGE_KEY);
+        if (!raw) return { storyArcs: [] };
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.storyArcs)) return { storyArcs: [] };
+        return parsed;
+    } catch (e) {
+        console.error('図鑑データの読み込みに失敗:', e);
+        return { storyArcs: [] };
+    }
+}
+
+function saveCodex() {
+    try {
+        localStorage.setItem(CODEX_STORAGE_KEY, JSON.stringify(codex));
+    } catch (e) {
+        console.error('図鑑データの保存に失敗:', e);
+    }
+}
+
+let codex = loadCodex();
+let codexModalOpen = false;
+let currentContinuationArc = null;
 
 // ===== ゲーム状態（保存なし・リロードで完全初期化） =====
 const MAX_HP = 100;
@@ -77,7 +119,6 @@ function getDifficultyTag(difficulty) {
 }
 
 // ===== アバター（HPに応じて表情が変わるSVG） =====
-// 4段階：元気 → 疲れ → 憔悴 → 瀕死
 function getAvatarState(hpPercent) {
     if (hpPercent > 70) return 'genki';
     if (hpPercent > 40) return 'tired';
@@ -238,7 +279,6 @@ function updateStatusBar() {
     rankDisplay.innerText = getRankLabel(state.score);
     comboDisplay.innerText = state.combo;
 
-    // 一発逆転クエストボタンの表示切替
     if (hpPercent > 0 && hpPercent <= GAMBLE_HP_THRESHOLD) {
         gambleBtn.classList.remove('hidden');
     } else {
@@ -257,9 +297,14 @@ generateBtn.addEventListener('click', async () => {
 
     try {
         const previousTitle = encodeURIComponent(state.lastAcceptedTitle || "");
-        const requests = [1, 2, 3].map(() =>
-            fetch(`/api/generate-quest?previousTitle=${previousTitle}`).then(r => r.json())
-        );
+        const activeArcs = codex.storyArcs.filter(a => !a.completed).length;
+        const storyEligible = activeArcs < 3 ? '1' : '0';
+
+        const requests = [0, 1, 2].map(i => {
+            const eligibleParam = i === 0 ? storyEligible : '0';
+            return fetch(`/api/generate-quest?previousTitle=${previousTitle}&storyEligible=${eligibleParam}`)
+                .then(r => r.json());
+        });
         const quests = await Promise.all(requests);
 
         if (emptyBoardMessage) {
@@ -302,6 +347,21 @@ function buildQuestCard(quest) {
             </div>
             <button class="order-btn">受注する（血の契約）</button>
         `;
+    } else if (quest.type === 'story_new') {
+        card.dataset.hpCost = quest.hpCost;
+        card.dataset.rewardValue = quest.rewardValue;
+        card.innerHTML = `
+            <div class="quest-tag cat-story">【運命の一幕】</div>
+            <p class="quest-arc-title">物語: ${quest.arcTitle}</p>
+            <h3 class="quest-title">${quest.chapterTitle}</h3>
+            <p class="quest-details"><strong>詳細:</strong> ${quest.details}</p>
+            <p class="quest-reward"><strong>報酬:</strong> ${quest.reward}</p>
+            <div class="quest-meta">
+                <span class="meta-hp">体力消費: ${quest.hpCost}</span>
+                <span class="meta-value">価値: ？？？pt</span>
+            </div>
+            <button class="order-btn">受注する（血の契約）</button>
+        `;
     } else {
         card.dataset.hpCost = quest.hpCost;
         card.dataset.rewardValue = quest.rewardValue;
@@ -319,13 +379,12 @@ function buildQuestCard(quest) {
     }
 
     const orderBtn = card.querySelector('.order-btn');
-   
     orderBtn.addEventListener('click', () => acceptQuest(card, quest));
 
     return card;
 }
 
-// ===== 通常/回復クエスト受注処理 =====
+// ===== 通常/回復/ストーリー クエスト受注処理 =====
 function acceptQuest(card, quest) {
     if (state.hp <= 0) return;
 
@@ -356,7 +415,7 @@ function acceptQuest(card, quest) {
     state.hp -= hpCost;
     state.score += finalReward;
     state.questsCompleted += 1;
-    state.lastAcceptedTitle = quest.title;
+    state.lastAcceptedTitle = quest.type === 'story_new' ? quest.chapterTitle : quest.title;
 
     if (ratio <= 0.3) {
         state.combo = 0;
@@ -366,9 +425,9 @@ function acceptQuest(card, quest) {
     }
 
     state.history.push({
-        title: quest.title,
-        category: quest.category,
-        type: 'normal',
+        title: quest.type === 'story_new' ? quest.chapterTitle : quest.title,
+        category: quest.type === 'story_new' ? '物語' : quest.category,
+        type: quest.type === 'story_new' ? 'story_new' : 'normal',
         hpCost,
         rewardValue: baseReward,
         ratio
@@ -398,6 +457,31 @@ function acceptQuest(card, quest) {
         valueSpan.appendChild(commentEl);
     }
 
+    if (quest.type === 'story_new') {
+        const newArc = {
+            id: 'arc_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+            title: quest.arcTitle,
+            completed: false,
+            chapters: [{
+                chapterNumber: 1,
+                title: quest.chapterTitle,
+                details: quest.details,
+                reward: quest.reward,
+                hpCost,
+                rewardValue: baseReward
+            }]
+        };
+        codex.storyArcs.push(newArc);
+        saveCodex();
+
+        const noteEl = document.createElement('p');
+        noteEl.className = 'story-recorded-note';
+        noteEl.innerText = '📖 図鑑に記録されました（続きは図鑑から受注できます）';
+        card.appendChild(noteEl);
+
+        if (codexModalOpen) renderCodex();
+    }
+
     playAcceptSound();
     card.classList.add('accepted');
     updateStatusBar();
@@ -406,6 +490,151 @@ function acceptQuest(card, quest) {
         triggerGameOver(false);
     }
 }
+
+// ===== 図鑑 =====
+codexBtn.addEventListener('click', () => {
+    codexModalOpen = true;
+    renderCodex();
+    codexModal.classList.remove('hidden');
+});
+
+codexCloseBtn.addEventListener('click', () => {
+    codexModalOpen = false;
+    codexModal.classList.add('hidden');
+});
+
+function renderCodex() {
+    if (codex.storyArcs.length === 0) {
+        codexStoryList.innerHTML = '<p class="codex-empty-message">まだ記録された物語はありません。「新しい依頼を探す」を続けていると、稀に見つかります。</p>';
+        return;
+    }
+
+    codexStoryList.innerHTML = '';
+    // 新しい物語ほど上に表示
+    [...codex.storyArcs].reverse().forEach(arc => {
+        const arcEl = document.createElement('div');
+        arcEl.className = 'codex-arc-card';
+
+        const chaptersHtml = arc.chapters.map(ch => `
+            <div class="codex-chapter">
+                <div class="codex-chapter-title">第${ch.chapterNumber}章: ${ch.title}</div>
+                <div class="codex-chapter-details">${ch.details}</div>
+            </div>
+        `).join('');
+
+        const statusText = arc.completed ? '完結済み' : '進行中';
+        const canContinue = !arc.completed && state.hp > 0;
+
+        arcEl.innerHTML = `
+            <p class="codex-arc-title">${arc.title}</p>
+            <p class="codex-arc-status">${statusText}（全${arc.chapters.length}章）</p>
+            ${chaptersHtml}
+            ${!arc.completed ? `<button class="codex-continue-btn" data-arc-id="${arc.id}" ${canContinue ? '' : 'disabled'}>続きを受注する</button>` : ''}
+        `;
+
+        codexStoryList.appendChild(arcEl);
+    });
+
+    codexStoryList.querySelectorAll('.codex-continue-btn').forEach(btn => {
+        btn.addEventListener('click', () => requestStoryContinuation(btn.dataset.arcId));
+    });
+}
+
+async function requestStoryContinuation(arcId) {
+    const arc = codex.storyArcs.find(a => a.id === arcId);
+    if (!arc || arc.completed) return;
+
+    try {
+        const response = await fetch('/api/generate-quest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'story_continue',
+                arcTitle: arc.title,
+                chapters: arc.chapters
+            })
+        });
+        const chapter = await response.json();
+        if (chapter.error) {
+            alert(`エラー: ${chapter.error}`);
+            return;
+        }
+
+        currentContinuationArc = { arc, chapter };
+
+        storyContinueArcTitle.innerText = arc.title;
+        storyContinueChapterTitle.innerText = chapter.chapterTitle;
+        storyContinueDetails.innerText = chapter.details;
+        storyContinueHp.innerText = `体力消費: ${chapter.hpCost}`;
+
+        storyContinueModal.classList.remove('hidden');
+    } catch (e) {
+        alert("通信エラー：ギルドの伝書鳩が撃ち落とされました。");
+    }
+}
+
+storyContinueCancelBtn.addEventListener('click', () => {
+    storyContinueModal.classList.add('hidden');
+    currentContinuationArc = null;
+});
+
+storyContinueAcceptBtn.addEventListener('click', () => {
+    if (!currentContinuationArc || state.hp <= 0) return;
+
+    const { arc, chapter } = currentContinuationArc;
+    const hpCost = Number(chapter.hpCost) || 10;
+    const baseReward = Number(chapter.rewardValue) || 10;
+    const ratio = baseReward / hpCost;
+    const comboMultiplier = 1 + Math.min(state.combo, 10) * 0.05;
+    const finalReward = Math.round(baseReward * comboMultiplier);
+
+    state.hp -= hpCost;
+    state.score += finalReward;
+    state.questsCompleted += 1;
+    state.lastAcceptedTitle = chapter.chapterTitle;
+
+    if (ratio <= 0.3) {
+        state.combo = 0;
+    } else {
+        state.combo += 1;
+        state.maxCombo = Math.max(state.maxCombo, state.combo);
+    }
+
+    state.history.push({
+        title: chapter.chapterTitle,
+        category: '物語',
+        type: 'story_continue',
+        hpCost,
+        rewardValue: baseReward,
+        ratio
+    });
+
+    arc.chapters.push({
+        chapterNumber: arc.chapters.length + 1,
+        title: chapter.chapterTitle,
+        details: chapter.details,
+        reward: chapter.reward,
+        hpCost,
+        rewardValue: baseReward
+    });
+    if (chapter.isFinal) {
+        arc.completed = true;
+    }
+    saveCodex();
+
+    storyContinueModal.classList.add('hidden');
+    currentContinuationArc = null;
+
+    playAcceptSound();
+    updateStatusBar();
+    renderCodex();
+
+    if (state.hp <= 0) {
+        codexModal.classList.add('hidden');
+        codexModalOpen = false;
+        triggerGameOver(false);
+    }
+});
 
 // ===== 一発逆転クエスト =====
 let currentGambleQuest = null;
@@ -469,8 +698,6 @@ gambleAcceptBtn.addEventListener('click', () => {
 
     currentGambleQuest = null;
 });
-
-
 
 // ===== 称号システム =====
 function getAchievementTitle() {
