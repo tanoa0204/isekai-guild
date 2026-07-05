@@ -13,7 +13,7 @@
         <div class="modal-box">
             <h2>冒険者登録</h2>
             <p>ギルドに登録する冒険者名を入力してください。</p>
-            <p class="modal-note">※このセッション限りの登録です（体力・スコアは毎回初期化されますが、物語の記録は図鑑に残ります）。</p>
+            <p class="modal-note">※このセッション限りの登録です（体力・スコア・持ち物は毎回初期化されますが、物語とアイテムの記録は図鑑に残ります）。</p>
             <input type="text" id="player-name-input" placeholder="例：勇者ポチ" maxlength="20">
             <button id="start-game-btn">ギルドに登録する</button>
         </div>
@@ -34,6 +34,20 @@
         </div>
     </div>
 
+    <!-- 持ち物（インベントリ）モーダル -->
+    <div id="inventory-modal" class="modal-overlay hidden">
+        <div class="modal-box inventory-box">
+            <div class="codex-header">
+                <h2>🎒 持ち物</h2>
+                <button id="inventory-close-btn" class="codex-close-btn">×</button>
+            </div>
+            <p class="codex-intro">今の冒険でのみ使えるアイテムです。使うと消費されます。</p>
+            <div id="inventory-list" class="item-list">
+                <p class="codex-empty-message">まだアイテムを持っていません。</p>
+            </div>
+        </div>
+    </div>
+
     <!-- 図鑑モーダル -->
     <div id="codex-modal" class="modal-overlay hidden">
         <div class="modal-box codex-box">
@@ -41,9 +55,16 @@
                 <h2>📖 冒険の記録</h2>
                 <button id="codex-close-btn" class="codex-close-btn">×</button>
             </div>
-            <p class="codex-intro">クエストを探していると、稀に物語性のある特別な依頼が見つかります。続きはここから受注できます。</p>
+            <div class="codex-tabs">
+                <button id="codex-tab-story" class="codex-tab-btn active-tab">物語</button>
+                <button id="codex-tab-item" class="codex-tab-btn">アイテム図鑑</button>
+            </div>
+            <p class="codex-intro">クエストを探していると、稀に物語性のある特別な依頼やアイテムが見つかります。</p>
             <div id="codex-story-list" class="codex-story-list">
                 <p class="codex-empty-message">まだ記録された物語はありません。</p>
+            </div>
+            <div id="codex-item-list" class="item-list hidden">
+                <p class="codex-empty-message">まだアイテムを発見していません。</p>
             </div>
         </div>
     </div>
@@ -116,6 +137,7 @@
                     <h2>理不尽クエスト<br>生成器</h2>
                     <button id="generate-btn">新しい依頼を探す</button>
                     <button id="gamble-btn" class="gamble-trigger-btn hidden">⚠️ 一発逆転クエストを探す</button>
+                    <button id="inventory-btn" class="inventory-open-btn">🎒 持ち物を見る</button>
                     <button id="codex-btn" class="codex-open-btn">📖 冒険の記録を見る</button>
                     <p class="sidebar-note">...冒険者よ、命を賭してクソ業務に挑め。<br>体力が尽きるまで、ランクを上げ続けろ。</p>
                     <p id="receptionist-comment" class="receptionist-comment">「今日はどんな依頼を受けますか？」</p>
