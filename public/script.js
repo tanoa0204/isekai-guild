@@ -2,6 +2,7 @@
 const generateBtn = document.getElementById('generate-btn');
 const gambleBtn = document.getElementById('gamble-btn');
 const codexBtn = document.getElementById('codex-btn');
+const inventoryBtn = document.getElementById('inventory-btn');
 const questList = document.getElementById('quest-list');
 const emptyBoardMessage = document.getElementById('empty-board-message');
 
@@ -24,9 +25,16 @@ const gambleRewardHint = document.getElementById('gamble-reward-hint');
 const gambleAcceptBtn = document.getElementById('gamble-accept-btn');
 const gambleCancelBtn = document.getElementById('gamble-cancel-btn');
 
+const inventoryModal = document.getElementById('inventory-modal');
+const inventoryCloseBtn = document.getElementById('inventory-close-btn');
+const inventoryList = document.getElementById('inventory-list');
+
 const codexModal = document.getElementById('codex-modal');
 const codexCloseBtn = document.getElementById('codex-close-btn');
 const codexStoryList = document.getElementById('codex-story-list');
+const codexItemList = document.getElementById('codex-item-list');
+const codexTabStoryBtn = document.getElementById('codex-tab-story');
+const codexTabItemBtn = document.getElementById('codex-tab-item');
 
 const storyContinueModal = document.getElementById('story-continue-modal');
 const storyContinueArcTitle = document.getElementById('story-continue-arc-title');
@@ -46,19 +54,31 @@ const worstQuestDisplay = document.getElementById('worst-quest-display');
 const rankingComparisonDisplay = document.getElementById('ranking-comparison-display');
 const restartBtn = document.getElementById('restart-btn');
 
+// ===== アイテムのランク表示メタ情報 =====
+const RARITY_META = {
+    common: { label: 'コモン', className: 'rarity-common' },
+    uncommon: { label: 'アンコモン', className: 'rarity-uncommon' },
+    rare: { label: 'レア', className: 'rarity-rare' },
+    epic: { label: 'エピック', className: 'rarity-epic' },
+    legendary: { label: 'レジェンダリー', className: 'rarity-legendary' }
+};
+const RARITY_ORDER = { legendary: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
+
 // ===== 図鑑（localStorageで永続化） =====
 const CODEX_STORAGE_KEY = 'isekaiGuildCodex_v1';
 
 function loadCodex() {
     try {
         const raw = localStorage.getItem(CODEX_STORAGE_KEY);
-        if (!raw) return { storyArcs: [] };
+        if (!raw) return { storyArcs: [], discoveredItems: [] };
         const parsed = JSON.parse(raw);
-        if (!parsed || !Array.isArray(parsed.storyArcs)) return { storyArcs: [] };
-        return parsed;
+        return {
+            storyArcs: Array.isArray(parsed.storyArcs) ? parsed.storyArcs : [],
+            discoveredItems: Array.isArray(parsed.discoveredItems) ? parsed.discoveredItems : []
+        };
     } catch (e) {
         console.error('図鑑データの読み込みに失敗:', e);
-        return { storyArcs: [] };
+        return { storyArcs: [], discoveredItems: [] };
     }
 }
 
@@ -89,7 +109,9 @@ let state = {
     lastAcceptedTitle: "",
     history: [],
     gambleWon: false,
-    gambleLost: false
+    gambleLost: false,
+    inventory: [],       // この冒険者だけが使えるアイテム
+    pendingLuckBonus: 0  // 運アイテム使用中の、次の受注への一時ボーナス(%)
 };
 
 const RANKS = [
@@ -176,7 +198,7 @@ function updateAvatar(hpPercent) {
     }
 }
 
-// ===== サウンド（Web Audio APIで生成、外部ファイル不要） =====
+// ===== サウンド =====
 let audioCtx = null;
 function ensureAudio() {
     if (!audioCtx) {
@@ -198,9 +220,7 @@ function playTone(freq, duration, type = 'sine', volume = 0.15, delay = 0) {
         osc.start(startTime);
         gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
         osc.stop(startTime + duration);
-    } catch (e) {
-        // 音が鳴らせない環境でもゲームは続行
-    }
+    } catch (e) { /* 無音環境でも続行 */ }
 }
 function playGenerateSound() {
     playTone(660, 0.08, 'square', 0.08);
@@ -214,6 +234,10 @@ function playRecoverySound() {
     playTone(523, 0.15, 'sine', 0.15);
     playTone(659, 0.15, 'sine', 0.15, 0.12);
     playTone(784, 0.2, 'sine', 0.15, 0.24);
+}
+function playItemGetSound() {
+    playTone(880, 0.1, 'triangle', 0.12);
+    playTone(1046, 0.15, 'triangle', 0.12, 0.1);
 }
 function playGambleWinSound() {
     [523, 659, 784, 1046].forEach((f, i) => playTone(f, 0.15, 'sawtooth', 0.12, i * 0.1));
@@ -384,6 +408,114 @@ function buildQuestCard(quest) {
     return card;
 }
 
+// ===== アイテム関連 =====
+function grantItemIfAny(quest, obtainedFromTitle, card) {
+    if (!quest.item) return;
+
+    const item = {
+        id: 'item_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+        name: quest.item.name,
+        description: quest.item.description,
+        rarity: quest.item.rarity,
+        effectType: quest.item.effectType,
+        effectValue: quest.item.effectValue,
+        obtainedFrom: obtainedFromTitle,
+        used: false
+    };
+    state.inventory.push(item);
+    recordItemDiscovery(item);
+
+    if (card) {
+        const meta = RARITY_META[item.rarity] || RARITY_META.common;
+        const note = document.createElement('p');
+        note.className = 'item-obtained-note';
+        note.innerText = `🎁 アイテム入手: ${item.name}（${meta.label}）`;
+        card.appendChild(note);
+    }
+
+    playItemGetSound();
+}
+
+function recordItemDiscovery(item) {
+    const existing = codex.discoveredItems.find(d => d.name === item.name && d.rarity === item.rarity);
+    if (existing) {
+        existing.timesObtained += 1;
+    } else {
+        codex.discoveredItems.push({
+            name: item.name,
+            description: item.description,
+            rarity: item.rarity,
+            effectType: item.effectType,
+            firstObtainedFrom: item.obtainedFrom,
+            timesObtained: 1
+        });
+    }
+    saveCodex();
+    if (codexModalOpen) renderItemCodex();
+}
+
+function buildItemCardHtml(item, showUseButton) {
+    const meta = RARITY_META[item.rarity] || RARITY_META.common;
+    let actionHtml = '';
+    if (showUseButton) {
+        if (item.effectType === 'decorative') {
+            actionHtml = '<span class="item-decorative-tag">鑑賞用（効果なし）</span>';
+        } else if (item.used) {
+            actionHtml = '<span class="item-used-tag">使用済み</span>';
+        } else {
+            actionHtml = `<button class="item-use-btn" data-item-id="${item.id}">使う</button>`;
+        }
+    }
+    return `
+        <div class="item-card ${meta.className}">
+            <div class="item-card-header">
+                <span class="item-rarity-badge">${meta.label}</span>
+                <span class="item-name">${item.name}</span>
+            </div>
+            <p class="item-description">${item.description}</p>
+            <p class="item-obtained-from">入手元: ${item.obtainedFrom}</p>
+            ${actionHtml}
+        </div>
+    `;
+}
+
+function renderInventory() {
+    if (state.inventory.length === 0) {
+        inventoryList.innerHTML = '<p class="codex-empty-message">まだアイテムを持っていません。</p>';
+        return;
+    }
+    inventoryList.innerHTML = state.inventory.map(item => buildItemCardHtml(item, true)).join('');
+    inventoryList.querySelectorAll('.item-use-btn').forEach(btn => {
+        btn.addEventListener('click', () => useInventoryItem(btn.dataset.itemId));
+    });
+}
+
+function useInventoryItem(itemId) {
+    const item = state.inventory.find(i => i.id === itemId && !i.used);
+    if (!item) return;
+
+    if (item.effectType === 'heal') {
+        const before = state.hp;
+        state.hp = Math.min(MAX_HP, state.hp + item.effectValue);
+        alert(`「${item.name}」を使った！ 体力が${state.hp - before}回復した。`);
+        playRecoverySound();
+    } else if (item.effectType === 'luck') {
+        state.pendingLuckBonus = item.effectValue;
+        alert(`「${item.name}」を使った！ 次に受注するクエストの報酬が${item.effectValue}%上乗せされる。`);
+    }
+    item.used = true;
+    updateStatusBar();
+    renderInventory();
+}
+
+inventoryBtn.addEventListener('click', () => {
+    renderInventory();
+    inventoryModal.classList.remove('hidden');
+});
+inventoryCloseBtn.addEventListener('click', () => {
+    inventoryModal.classList.add('hidden');
+});
+
 // ===== 通常/回復/ストーリー クエスト受注処理 =====
 function acceptQuest(card, quest) {
     if (state.hp <= 0) return;
@@ -410,12 +542,20 @@ function acceptQuest(card, quest) {
     const ratio = baseReward / hpCost;
 
     const comboMultiplier = 1 + Math.min(state.combo, 10) * 0.05;
-    const finalReward = Math.round(baseReward * comboMultiplier);
+    let finalReward = Math.round(baseReward * comboMultiplier);
+
+    // 運アイテムのボーナス適用（あれば一度だけ）
+    if (state.pendingLuckBonus > 0) {
+        finalReward = Math.round(finalReward * (1 + state.pendingLuckBonus / 100));
+        state.pendingLuckBonus = 0;
+    }
 
     state.hp -= hpCost;
     state.score += finalReward;
     state.questsCompleted += 1;
-    state.lastAcceptedTitle = quest.type === 'story_new' ? quest.chapterTitle : quest.title;
+
+    const titleForRecord = quest.type === 'story_new' ? quest.chapterTitle : quest.title;
+    state.lastAcceptedTitle = titleForRecord;
 
     if (ratio <= 0.3) {
         state.combo = 0;
@@ -425,7 +565,7 @@ function acceptQuest(card, quest) {
     }
 
     state.history.push({
-        title: quest.type === 'story_new' ? quest.chapterTitle : quest.title,
+        title: titleForRecord,
         category: quest.type === 'story_new' ? '物語' : quest.category,
         type: quest.type === 'story_new' ? 'story_new' : 'normal',
         hpCost,
@@ -482,6 +622,8 @@ function acceptQuest(card, quest) {
         if (codexModalOpen) renderCodex();
     }
 
+    grantItemIfAny(quest, titleForRecord, card);
+
     playAcceptSound();
     card.classList.add('accepted');
     updateStatusBar();
@@ -494,7 +636,7 @@ function acceptQuest(card, quest) {
 // ===== 図鑑 =====
 codexBtn.addEventListener('click', () => {
     codexModalOpen = true;
-    renderCodex();
+    switchCodexTab('story');
     codexModal.classList.remove('hidden');
 });
 
@@ -503,6 +645,25 @@ codexCloseBtn.addEventListener('click', () => {
     codexModal.classList.add('hidden');
 });
 
+codexTabStoryBtn.addEventListener('click', () => switchCodexTab('story'));
+codexTabItemBtn.addEventListener('click', () => switchCodexTab('item'));
+
+function switchCodexTab(tab) {
+    if (tab === 'story') {
+        codexStoryList.classList.remove('hidden');
+        codexItemList.classList.add('hidden');
+        codexTabStoryBtn.classList.add('active-tab');
+        codexTabItemBtn.classList.remove('active-tab');
+        renderCodex();
+    } else {
+        codexStoryList.classList.add('hidden');
+        codexItemList.classList.remove('hidden');
+        codexTabItemBtn.classList.add('active-tab');
+        codexTabStoryBtn.classList.remove('active-tab');
+        renderItemCodex();
+    }
+}
+
 function renderCodex() {
     if (codex.storyArcs.length === 0) {
         codexStoryList.innerHTML = '<p class="codex-empty-message">まだ記録された物語はありません。「新しい依頼を探す」を続けていると、稀に見つかります。</p>';
@@ -510,7 +671,6 @@ function renderCodex() {
     }
 
     codexStoryList.innerHTML = '';
-    // 新しい物語ほど上に表示
     [...codex.storyArcs].reverse().forEach(arc => {
         const arcEl = document.createElement('div');
         arcEl.className = 'codex-arc-card';
@@ -527,7 +687,7 @@ function renderCodex() {
 
         arcEl.innerHTML = `
             <p class="codex-arc-title">${arc.title}</p>
-            <p class="codex-arc-status">${statusText}（全${arc.chapters.length}章）</p>
+            <p class="codex-arc-status">${statusText}（全${arc.chapters.length}章 / 全5章）</p>
             ${chaptersHtml}
             ${!arc.completed ? `<button class="codex-continue-btn" data-arc-id="${arc.id}" ${canContinue ? '' : 'disabled'}>続きを受注する</button>` : ''}
         `;
@@ -538,6 +698,28 @@ function renderCodex() {
     codexStoryList.querySelectorAll('.codex-continue-btn').forEach(btn => {
         btn.addEventListener('click', () => requestStoryContinuation(btn.dataset.arcId));
     });
+}
+
+function renderItemCodex() {
+    if (codex.discoveredItems.length === 0) {
+        codexItemList.innerHTML = '<p class="codex-empty-message">まだアイテムを発見していません。</p>';
+        return;
+    }
+
+    const sorted = [...codex.discoveredItems].sort((a, b) => (RARITY_ORDER[a.rarity] ?? 5) - (RARITY_ORDER[b.rarity] ?? 5));
+    codexItemList.innerHTML = sorted.map(item => {
+        const meta = RARITY_META[item.rarity] || RARITY_META.common;
+        return `
+            <div class="item-card ${meta.className}">
+                <div class="item-card-header">
+                    <span class="item-rarity-badge">${meta.label}</span>
+                    <span class="item-name">${item.name}</span>
+                </div>
+                <p class="item-description">${item.description}</p>
+                <p class="item-obtained-from">初回入手: ${item.firstObtainedFrom}（発見${item.timesObtained}回）</p>
+            </div>
+        `;
+    }).join('');
 }
 
 async function requestStoryContinuation(arcId) {
@@ -586,7 +768,12 @@ storyContinueAcceptBtn.addEventListener('click', () => {
     const baseReward = Number(chapter.rewardValue) || 10;
     const ratio = baseReward / hpCost;
     const comboMultiplier = 1 + Math.min(state.combo, 10) * 0.05;
-    const finalReward = Math.round(baseReward * comboMultiplier);
+    let finalReward = Math.round(baseReward * comboMultiplier);
+
+    if (state.pendingLuckBonus > 0) {
+        finalReward = Math.round(finalReward * (1 + state.pendingLuckBonus / 100));
+        state.pendingLuckBonus = 0;
+    }
 
     state.hp -= hpCost;
     state.score += finalReward;
@@ -621,6 +808,13 @@ storyContinueAcceptBtn.addEventListener('click', () => {
         arc.completed = true;
     }
     saveCodex();
+
+    if (chapter.item) {
+        grantItemIfAny(chapter, chapter.chapterTitle, null);
+        if (chapter.isFinal) {
+            alert(`物語「${arc.title}」が完結しました！\n記念アイテム「${chapter.item.name}」を手に入れた。`);
+        }
+    }
 
     storyContinueModal.classList.add('hidden');
     currentContinuationArc = null;
@@ -737,7 +931,7 @@ function triggerGameOver(isGambleDeath) {
 
     gameoverTitle.innerText = isGambleDeath ? "賭けに敗れました…" : "力尽きました…";
     gameoverMessage.innerText =
-        `${state.name}は${state.questsCompleted}件のクエストをこなし、${isGambleDeath ? "一発逆転クエストに敗れて" : ""}力尽きました。`;
+        `${state.name}は${state.questsCompleted}件のクエストをこなし、${isGambleDeath ? "一発逆転クエストに敗れて" : ""}力尽きました。今回のアイテム収穫数: ${state.inventory.length}個。`;
     finalRankDisplay.innerText = `最終ギルドランク：${getRankLabel(state.score)}（${state.score}pt）`;
     achievementTitleDisplay.innerText = `称号：${getAchievementTitle()}`;
 
