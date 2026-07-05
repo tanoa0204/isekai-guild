@@ -100,7 +100,7 @@ body {
     padding: 20px;
     border: 1px solid #d7ccc8;
     box-shadow: 3px 3px 10px rgba(0,0,0,0.1);
-    position: relative; /* 逃げるギミック用 */
+    position: relative;
     transition: all 0.1s ease;
 }
 
@@ -108,6 +108,13 @@ body {
     color: #e64a19;
     font-weight: bold;
     font-size: 0.9rem;
+}
+
+.quest-arc-title {
+    font-size: 0.75rem;
+    color: #6a1b9a;
+    margin: 2px 0 0;
+    font-style: italic;
 }
 
 .quest-title {
@@ -249,6 +256,121 @@ body {
 }
 #gamble-cancel-btn:hover {
     background-color: #9e9e9e;
+}
+
+/* ===== 図鑑モーダル ===== */
+.codex-open-btn {
+    background-color: #6a1b9a;
+    color: white;
+    border: none;
+    padding: 12px 10px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 10px;
+    width: 100%;
+}
+.codex-open-btn:hover {
+    background-color: #8e24aa;
+}
+.codex-box {
+    max-width: 600px;
+    text-align: left;
+}
+.codex-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.codex-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #3e2723;
+}
+.codex-intro {
+    font-size: 0.8rem;
+    color: #6d4c41;
+    font-style: italic;
+}
+.codex-story-list {
+    margin-top: 15px;
+}
+.codex-empty-message {
+    color: #8d6e63;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+}
+.codex-arc-card {
+    border: 1px solid #d7ccc8;
+    background-color: #efebe9;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+.codex-arc-title {
+    font-weight: bold;
+    font-size: 1.1rem;
+    margin: 0 0 5px;
+    color: #6a1b9a;
+}
+.codex-arc-status {
+    font-size: 0.75rem;
+    color: #8d6e63;
+    margin-bottom: 10px;
+}
+.codex-chapter {
+    border-left: 3px solid #b39ddb;
+    padding-left: 10px;
+    margin-bottom: 8px;
+}
+.codex-chapter-title {
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+.codex-chapter-details {
+    font-size: 0.85rem;
+    color: #5d4037;
+}
+.codex-continue-btn {
+    background-color: #6a1b9a;
+    color: white;
+    border: none;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    margin-top: 5px;
+}
+.codex-continue-btn:hover {
+    background-color: #8e24aa;
+}
+.codex-continue-btn:disabled {
+    background-color: #b0a8a8;
+    cursor: not-allowed;
+}
+
+.story-preview-box {
+    border-color: #6a1b9a;
+}
+#story-continue-accept-btn {
+    background-color: #6a1b9a;
+    color: white;
+}
+#story-continue-accept-btn:hover {
+    background-color: #8e24aa;
+}
+#story-continue-cancel-btn {
+    background-color: #757575;
+    color: white;
+}
+#story-continue-cancel-btn:hover {
+    background-color: #9e9e9e;
+}
+.story-recorded-note {
+    font-size: 0.75rem;
+    color: #6a1b9a;
+    margin-top: 8px;
+    font-style: italic;
 }
 
 /* ===== ステータスバー ===== */
@@ -416,6 +538,9 @@ body {
 }
 .quest-tag.cat-回復 {
     color: #2e7d32;
+}
+.quest-tag.cat-story {
+    color: #6a1b9a;
 }
 
 .empty-board-message {
