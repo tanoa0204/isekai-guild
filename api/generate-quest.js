@@ -5,7 +5,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "APIキーが設定されていません。" });
   }
 
-  // GETのquery、POSTのbody両方に対応
   const params = req.method === 'POST' ? (req.body || {}) : (req.query || {});
 
   const requestedType = params.type;
@@ -20,6 +19,77 @@ export default async function handler(req, res) {
     理不尽な依頼をさばき続けている。受付嬢自身も、なぜ自分がこんな場所で働いているのか、
     本当のところはよくわかっていない。
   `;
+
+  // ===== アイテム関連のヘルパー =====
+  const RARITY_WEIGHTS = { common: 50, uncommon: 30, rare: 15, epic: 4, legendary: 1 };
+  function pickWeightedRarity() {
+    const total = Object.values(RARITY_WEIGHTS).reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (const [rarity, weight] of Object.entries(RARITY_WEIGHTS)) {
+      if (r < weight) return rarity;
+      r -= weight;
+    }
+    return 'common';
+  }
+
+  function buildItemInstruction(forceLegendary) {
+    if (forceLegendary) {
+      return `
+        【重要】この依頼はストーリーの最終章です。報酬として、必ず記念になるような特別なアイテムを1つ生成してください。
+        - itemRarityは "legendary" 固定にしてください。
+        - itemEffectTypeは "heal"（体力回復）, "luck"（次の依頼の運が上がる）, "decorative"（見た目重視・効果なし）のいずれかにしてください。
+        - itemEffectValueは、healなら20〜40、luckなら20〜50、decorativeなら0にしてください。
+        JSONに必ず以下のキーを追加してください（省略不可）:
+        "itemName": "アイテム名（伝説的で思い出に残る名前）",
+        "itemDescription": "アイテムの説明（この物語にまつわる思い出深いもの）",
+        "itemRarity": "legendary",
+        "itemEffectType": "heal",
+        "itemEffectValue": 30
+      `;
+    }
+    return `
+      このクエストでは、25%程度の確率で報酬として副次的なアイテムが手に入ったことにしてください。
+      アイテムを出す場合のみ、JSONに以下のキーを追加してください（出さない場合はこれらのキー自体を書かないでください）:
+      "itemName": "アイテム名（ユニークで少し笑えるもの）",
+      "itemDescription": "アイテムの説明・効果のフレーバーテキスト",
+      "itemRarity": "common・uncommon・rare・epicのいずれか（epicはごく稀）",
+      "itemEffectType": "heal・luck・decorativeのいずれか",
+      "itemEffectValue": "数値（heal:5〜25, luck:10〜30, decorative:0）"
+    `;
+  }
+
+  function parseItemFromQuest(quest, forceLegendary) {
+    if (!forceLegendary && !quest.itemName) return null;
+
+    const validRarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+    const rarity = validRarities.includes(quest.itemRarity)
+      ? quest.itemRarity
+      : (forceLegendary ? 'legendary' : pickWeightedRarity());
+
+    const validEffects = ['heal', 'luck', 'decorative'];
+    const effectType = validEffects.includes(quest.itemEffectType) ? quest.itemEffectType : 'decorative';
+
+    let effectValue = Number(quest.itemEffectValue);
+    if (!Number.isFinite(effectValue)) {
+      effectValue = effectType === 'heal' ? (forceLegendary ? 30 : 15)
+        : effectType === 'luck' ? (forceLegendary ? 35 : 20)
+        : 0;
+    } else if (effectType === 'heal') {
+      effectValue = Math.min(Math.max(Math.round(effectValue), 5), 40);
+    } else if (effectType === 'luck') {
+      effectValue = Math.min(Math.max(Math.round(effectValue), 10), 50);
+    } else {
+      effectValue = 0;
+    }
+
+    return {
+      name: quest.itemName || (forceLegendary ? '名もなき記念品' : '奇妙な小物'),
+      description: quest.itemDescription || 'よくわからないが、なんとなく手元に残った。',
+      rarity,
+      effectType,
+      effectValue
+    };
+  }
 
   // タイプ決定
   let type;
@@ -41,6 +111,7 @@ export default async function handler(req, res) {
   }
 
   let prompt = '';
+  let forceFinalChapter = false;
 
   if (type === 'recovery') {
     prompt = `
@@ -82,10 +153,12 @@ export default async function handler(req, res) {
       【世界観】
       ${WORLD_LORE}
 
-      この依頼は今後何章にもわたって続く可能性がある、長編クエストの序章です。
-      - 受付嬢の過去、魔王の真意、消えた冒険者の噂など、気になる伏線や謎を感じさせる内容にしてください（自由に発想してよい）。
-      - ただし通常のクエスト同様、シュールで少し笑える要素も残してください（重すぎる真面目な話にはしない）。
-      - この依頼にも体力消費(hpCost)と報酬価値(rewardValue)を設定してください（1〜40の整数、通常クエストと同じ基準）。
+      この依頼は今後5章にわたって続く長編クエストの序章です。
+      - 受付嬢の過去、魔王の真意、消えた冒険者の噂など、気になる伏線や謎を感じさせる内容にしてください。
+      - シュールで少し笑える要素も残してください（重すぎる真面目な話にはしない）。
+      - 体力消費(hpCost)と報酬価値(rewardValue)を設定してください（1〜40の整数）。
+
+      ${buildItemInstruction(false)}
 
       以下のJSON形式で返してください。余計な文章は不要です。数値は数値型で返してください。
       {
@@ -100,6 +173,9 @@ export default async function handler(req, res) {
   } else if (type === 'story_continue') {
     const arcTitle = typeof params.arcTitle === 'string' ? params.arcTitle.slice(0, 100) : '名もなき物語';
     const chapters = Array.isArray(params.chapters) ? params.chapters : [];
+    const nextChapterNumber = chapters.length + 1;
+    forceFinalChapter = nextChapterNumber >= 5;
+
     const summary = chapters
       .map(c => `第${c.chapterNumber}章「${c.title}」: ${c.details}`)
       .join('\n');
@@ -113,9 +189,13 @@ export default async function handler(req, res) {
       【これまでのあらすじ】
       ${summary || '（まだ第1章のみです）'}
 
-      上記の続きとして、次の章を作成してください。物語がうまく着地しそうであれば完結させて構いません
-      （完結する場合は isFinal を true にしてください。まだ続きそうであれば false にしてください）。
-      この章にも体力消費(hpCost)と報酬価値(rewardValue)を設定してください（1〜40の整数）。
+      これは第${nextChapterNumber}章です。
+      ${forceFinalChapter
+        ? '【重要】これは最終章（第5章）です。物語をきちんと完結させてください。isFinalは必ずtrueにしてください。'
+        : 'まだ物語は続きます。isFinalはfalseにしてください。'}
+      体力消費(hpCost)と報酬価値(rewardValue)を設定してください（1〜40の整数）。
+
+      ${buildItemInstruction(forceFinalChapter)}
 
       以下のJSON形式で返してください。余計な文章は不要です。数値は数値型で返してください。
       {
@@ -124,7 +204,7 @@ export default async function handler(req, res) {
         "reward": "報酬の説明文",
         "hpCost": 12,
         "rewardValue": 18,
-        "isFinal": false
+        "isFinal": ${forceFinalChapter ? 'true' : 'false'}
       }
     `;
   } else {
@@ -142,17 +222,17 @@ export default async function handler(req, res) {
       - 50%: 1〜3（簡単なお使い程度）
       - 35%: 4〜6（それなりに面倒）
       - 15%: 7〜10（かなり過酷・理不尽）
-      基本的には簡単なクエストが多く、たまに高難度が混ざるようにしてください。
 
       【ギャップ演出（重要）】
-      以下をランダムに混ぜて、内容とリターンにギャップを作ってください。
       - パターンA（普通、50%）: 難易度相応の内容・見た目で、hpCostとrewardValueも相応。
       - パターンB（当たり、25%）: 一見簡単・地味に見えるが、実はrewardValueが高い。
       - パターンC（ハズレ、25%）: 一見大変そうに見えるが、rewardValueが理不尽に低い。
 
       【数値の決め方】
-      - hpCost（1〜40の整数）: difficulty×2〜4程度が目安。低難度でも稀にhpCostが高い理不尽クエストがあってもよい。
-      - rewardValue（1〜40の整数）: ギャップ演出パターンに従う。hpCostと機械的に比例させないこと。
+      - hpCost（1〜40の整数）: difficulty×2〜4程度が目安。
+      - rewardValue（1〜40の整数）: ギャップ演出パターンに従う。
+
+      ${buildItemInstruction(false)}
 
       以下のJSONフォーマットで返してください。余計な文章は一切不要です。数値は数値型で返してください。
       {
@@ -216,7 +296,8 @@ export default async function handler(req, res) {
         details: quest.details || "詳細不明。とりあえず美味しかった。",
         reward: quest.reward || "満腹感",
         category: "回復",
-        healAmount
+        healAmount,
+        item: null
       });
     }
 
@@ -228,13 +309,15 @@ export default async function handler(req, res) {
         details: quest.details || "詳細不明。とにかく命懸けです。",
         reward: quest.reward || "成功すれば大金",
         category: "賭け",
-        gambleReward
+        gambleReward,
+        item: null
       });
     }
 
     if (type === 'story_new') {
       const hpCost = clamp(quest.hpCost, 1, 40, 10);
       const rewardValue = clamp(quest.rewardValue, 1, 40, 15);
+      const item = parseItemFromQuest(quest, false);
       return res.status(200).json({
         type: 'story_new',
         arcTitle: quest.arcTitle || "名もなき物語",
@@ -242,14 +325,16 @@ export default async function handler(req, res) {
         details: quest.details || "詳細不明。",
         reward: quest.reward || "報酬なし",
         hpCost,
-        rewardValue
+        rewardValue,
+        item
       });
     }
 
     if (type === 'story_continue') {
       const hpCost = clamp(quest.hpCost, 1, 40, 12);
       const rewardValue = clamp(quest.rewardValue, 1, 40, 18);
-      const isFinal = quest.isFinal === true;
+      const isFinal = forceFinalChapter ? true : (quest.isFinal === true);
+      const item = parseItemFromQuest(quest, forceFinalChapter);
       return res.status(200).json({
         type: 'story_continue',
         chapterTitle: quest.chapterTitle || "次の章",
@@ -257,7 +342,8 @@ export default async function handler(req, res) {
         reward: quest.reward || "報酬なし",
         hpCost,
         rewardValue,
-        isFinal
+        isFinal,
+        item
       });
     }
 
@@ -273,6 +359,7 @@ export default async function handler(req, res) {
     const hpCost = clamp(quest.hpCost, 1, 40, Math.max(1, difficulty * 3));
     const rewardValue = clamp(quest.rewardValue, 1, 40, Math.max(1, Math.floor(hpCost / 2)));
     const category = ["戦闘", "雑用", "交渉"].includes(quest.category) ? quest.category : "雑用";
+    const item = parseItemFromQuest(quest, false);
 
     res.status(200).json({
       type: 'normal',
@@ -282,7 +369,8 @@ export default async function handler(req, res) {
       category,
       difficulty,
       hpCost,
-      rewardValue
+      rewardValue,
+      item
     });
 
   } catch (error) {
