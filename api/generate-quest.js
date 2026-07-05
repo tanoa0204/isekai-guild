@@ -5,17 +5,39 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "APIキーが設定されていません。" });
   }
 
-  const requestedType = req.query.type;
-  const previousTitle = typeof req.query.previousTitle === 'string'
-    ? req.query.previousTitle.slice(0, 100)
-    : '';
+  // GETのquery、POSTのbody両方に対応
+  const params = req.method === 'POST' ? (req.body || {}) : (req.query || {});
 
-  // タイプ決定：gambleは明示リクエストのみ。それ以外は5%で回復、95%で通常
+  const requestedType = params.type;
+  const previousTitle = typeof params.previousTitle === 'string' ? params.previousTitle.slice(0, 100) : '';
+  const storyEligible = params.storyEligible === '1' || params.storyEligible === 1;
+
+  const WORLD_LORE = `
+    この物語の舞台は、辺境の異世界「クロニクル辺境」。
+    かつて人間と魔王軍は激しく争っていたが、ある時を境に魔王が「もう戦うのは面倒くさい」と言い出し、
+    以来、魔王軍と人間側の揉め事はすべて冒険者ギルドが仲介する"事務処理"として扱われるようになった。
+    冒険者ギルドの受付嬢は、来る日も来る日も魔王軍や近隣の奇妙な種族、時にはギルドマスター自身からの
+    理不尽な依頼をさばき続けている。受付嬢自身も、なぜ自分がこんな場所で働いているのか、
+    本当のところはよくわかっていない。
+  `;
+
+  // タイプ決定
   let type;
   if (requestedType === 'gamble') {
     type = 'gamble';
+  } else if (requestedType === 'story_new') {
+    type = 'story_new';
+  } else if (requestedType === 'story_continue') {
+    type = 'story_continue';
   } else {
-    type = Math.random() < 0.05 ? 'recovery' : 'normal';
+    const roll = Math.random();
+    if (roll < 0.05) {
+      type = 'recovery';
+    } else if (storyEligible && roll < 0.17) {
+      type = 'story_new';
+    } else {
+      type = 'normal';
+    }
   }
 
   let prompt = '';
@@ -23,6 +45,7 @@ export default async function handler(req, res) {
   if (type === 'recovery') {
     prompt = `
       あなたは異世界ギルドの受付嬢です。
+      ${WORLD_LORE}
       冒険者が体力を回復できる、ほのぼの・脱力系の「休憩クエスト」を1つ生成してください（レアな依頼という設定です）。
       内容はシュールで少し笑える程度にし、危険な要素は含めないでください。
 
@@ -38,6 +61,7 @@ export default async function handler(req, res) {
   } else if (type === 'gamble') {
     prompt = `
       あなたは異世界ギルドの受付嬢です。
+      ${WORLD_LORE}
       冒険者が虫の息の状態で受けるかどうか迷うような、超ハイリスク・ハイリターンな「一発逆転クエスト」を1つ生成してください。
       内容は理不尽かつ緊張感のある、シュールな文体にしてください。
 
@@ -50,9 +74,63 @@ export default async function handler(req, res) {
       }
       gambleRewardは60〜150の整数にしてください。
     `;
+  } else if (type === 'story_new') {
+    prompt = `
+      あなたは異世界ギルドの受付嬢です。以下の世界観に基づいて、
+      通常の理不尽クエストとは別に「物語性のある特別な依頼」の第1章を作成してください。
+
+      【世界観】
+      ${WORLD_LORE}
+
+      この依頼は今後何章にもわたって続く可能性がある、長編クエストの序章です。
+      - 受付嬢の過去、魔王の真意、消えた冒険者の噂など、気になる伏線や謎を感じさせる内容にしてください（自由に発想してよい）。
+      - ただし通常のクエスト同様、シュールで少し笑える要素も残してください（重すぎる真面目な話にはしない）。
+      - この依頼にも体力消費(hpCost)と報酬価値(rewardValue)を設定してください（1〜40の整数、通常クエストと同じ基準）。
+
+      以下のJSON形式で返してください。余計な文章は不要です。数値は数値型で返してください。
+      {
+        "arcTitle": "物語全体のタイトル（例：受付嬢の失われた記憶）",
+        "chapterTitle": "第1章のクエスト名",
+        "details": "詳細・理不尽な条件",
+        "reward": "報酬の説明文",
+        "hpCost": 10,
+        "rewardValue": 15
+      }
+    `;
+  } else if (type === 'story_continue') {
+    const arcTitle = typeof params.arcTitle === 'string' ? params.arcTitle.slice(0, 100) : '名もなき物語';
+    const chapters = Array.isArray(params.chapters) ? params.chapters : [];
+    const summary = chapters
+      .map(c => `第${c.chapterNumber}章「${c.title}」: ${c.details}`)
+      .join('\n');
+
+    prompt = `
+      あなたは異世界ギルドの受付嬢です。以下の世界観のもとで進行中の連続クエスト「${arcTitle}」の続きの章を作成してください。
+
+      【世界観】
+      ${WORLD_LORE}
+
+      【これまでのあらすじ】
+      ${summary || '（まだ第1章のみです）'}
+
+      上記の続きとして、次の章を作成してください。物語がうまく着地しそうであれば完結させて構いません
+      （完結する場合は isFinal を true にしてください。まだ続きそうであれば false にしてください）。
+      この章にも体力消費(hpCost)と報酬価値(rewardValue)を設定してください（1〜40の整数）。
+
+      以下のJSON形式で返してください。余計な文章は不要です。数値は数値型で返してください。
+      {
+        "chapterTitle": "この章のクエスト名",
+        "details": "詳細・理不尽な条件、または物語の展開",
+        "reward": "報酬の説明文",
+        "hpCost": 12,
+        "rewardValue": 18,
+        "isFinal": false
+      }
+    `;
   } else {
     prompt = `
       あなたは異世界ギルドの受付嬢です。
+      ${WORLD_LORE}
       冒険者に対して、シュールで理不尽、かつ少し笑えるクエストを1つ生成してください。
       ${previousTitle ? `直前に冒険者は「${previousTitle}」という依頼をこなしています。自然であれば後日談や関連性を匂わせてもよいです（無理にこじつけなくてよい）。` : ''}
 
@@ -154,6 +232,36 @@ export default async function handler(req, res) {
       });
     }
 
+    if (type === 'story_new') {
+      const hpCost = clamp(quest.hpCost, 1, 40, 10);
+      const rewardValue = clamp(quest.rewardValue, 1, 40, 15);
+      return res.status(200).json({
+        type: 'story_new',
+        arcTitle: quest.arcTitle || "名もなき物語",
+        chapterTitle: quest.chapterTitle || "第1章：奇妙な依頼",
+        details: quest.details || "詳細不明。",
+        reward: quest.reward || "報酬なし",
+        hpCost,
+        rewardValue
+      });
+    }
+
+    if (type === 'story_continue') {
+      const hpCost = clamp(quest.hpCost, 1, 40, 12);
+      const rewardValue = clamp(quest.rewardValue, 1, 40, 18);
+      const isFinal = quest.isFinal === true;
+      return res.status(200).json({
+        type: 'story_continue',
+        chapterTitle: quest.chapterTitle || "次の章",
+        details: quest.details || "詳細不明。",
+        reward: quest.reward || "報酬なし",
+        hpCost,
+        rewardValue,
+        isFinal
+      });
+    }
+
+    // normal
     const fallbackRoll = Math.random();
     const fallbackDifficulty = fallbackRoll < 0.5
       ? Math.floor(Math.random() * 3) + 1
